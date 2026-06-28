@@ -8,28 +8,31 @@ export type ALLOWED_DEPTHS = ElementOf<Range<90>>;
 export type ElementOf<T> = T extends (infer E)[] ? E : T;
 
 export type UnionToIntersection<U> =
-  (U extends any ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;
+  (U extends unknown ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;
 
 export type ValueOf<T> = T[keyof T];
 
 export type BundleFactoryResult<T extends string> = ReturnType<typeof forNamespace<T>>;
 export type BundleFactoryResultValues<T extends string = ''> = ReturnType<ValueOf<BundleFactoryResult<T>>>;
 
+// `(...args: never[]) => infer R` matches *any* function regardless of its
+// parameter types and infers its return type. `never` is the correct top type
+// in this (contravariant) matcher position: an action creator `(props: P) => A`
+// is assignable to `(...args: never[]) => unknown` but NOT to
+// `(...args: unknown[]) => unknown` (that would require `P` to accept `unknown`),
+// which would silently collapse every prop-ful creator to `never`.
 export type ListenStreams<T> = { [K in keyof T & string as `${K}$`]:
-  Observable<
-    T[K] extends (...args: any) => any ? ReturnType<T[K]> :
-    T[K] extends () => any ? ReturnType<T[K]> : never
-  >;
+  Observable<T[K] extends (...args: never[]) => infer R ? R : never>;
 };
 
 export type SelectorStreams<T> = {
-  [K in keyof T & string as `${K}\$`]: T[K] extends (...args: any[]) => infer U ? Observable<U> : never
+  [K in keyof T & string as `${K}\$`]: T[K] extends (...args: never[]) => infer U ? Observable<U> : never
 }
 
-type LengthOf<T extends any[]> = T["length"];
+type LengthOf<T extends unknown[]> = T["length"];
 
-type Unshift<List extends any[], Item> =
-  ((first: Item, ...rest: List) => any) extends ((...list: infer R) => any) ? R : never;
+type Unshift<List extends unknown[], Item> =
+  ((first: Item, ...rest: List) => unknown) extends ((...list: infer R) => unknown) ? R : never;
 
 type Equals<T, S> =
   [T] extends [S] ? (
@@ -42,10 +45,10 @@ export type Range<N, T extends number[] = []> = {
 }[Equals<LengthOf<Tail<T>>, N> extends true ? 0 : 1];
 
 
-type Head<T extends any[]> = T extends [head: infer HEAD, ...tail: any] ? HEAD : never;
-type Tail<T extends any[]> = T extends [head: any, ...tail: infer TAIL] ? TAIL : never;
+type Head<T extends unknown[]> = T extends [head: infer HEAD, ...tail: unknown[]] ? HEAD : never;
+type Tail<T extends unknown[]> = T extends [head: unknown, ...tail: infer TAIL] ? TAIL : never;
 
-export type Filter<T extends any[], F extends any> =
+export type Filter<T extends unknown[], F> =
   LengthOf<T> extends 0 ? [] :
   Head<T> extends F ? [...Filter<Tail<T>, F>] :
   [Head<T>, ...Filter<Tail<T>, F>];

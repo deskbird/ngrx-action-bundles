@@ -1,7 +1,16 @@
 import { Injectable } from "@angular/core";
 import { Actions, ofType } from "@ngrx/effects";
-import { createSelector, Store } from '@ngrx/store'
+import { Action, Selector, Store } from '@ngrx/store'
+import { Observable } from "rxjs";
 import { BundleFactoryResultValues, ElementOf, SelectorStreams, ListenStreams, UnionToIntersection } from "./types";
+
+/**
+ * A callable that produces an action and carries its `type` string. Used to give
+ * the values from `Object.entries` a concrete (non-`any`) shape at the dynamic
+ * boundary; precise per-action types are reconstructed for callers by the mapped
+ * return types (`UnionToIntersection` / `ListenStreams`).
+ */
+type AnyActionCreator = ((...args: never[]) => Action) & { type: string };
 
 @Injectable({
   providedIn: 'root'
@@ -12,19 +21,24 @@ export class Connect {
 
   bundles<T extends ReadonlyArray<BundleFactoryResultValues<U>>, U extends string>(bundles: T) {
 
-    const result = { create: {} as any, dispatch: {} as any, listen: {} as any };
+    const result: {
+      create: Record<string, (...args: never[]) => Action>;
+      dispatch: Record<string, (...args: never[]) => Action>;
+      listen: Record<string, Observable<Action>>;
+    } = { create: {}, dispatch: {}, listen: {} };
     for (const creators of bundles) {
       for (const [key, creator] of Object.entries(creators)) {
-        result.create[key] = (...args: any[]) => {
-          const action = (creator as any)(...args);
-          return action;
-        };
-        result.dispatch[key] = (...args: any[]) => {
-          const action = (creator as any)(...args);
+        // `creator` is a union of the bundle's action creators; calling a union
+        // of differing signatures isn't expressible, so narrow to a concrete
+        // callable shape at this dynamic boundary.
+        const actionCreator = creator as AnyActionCreator;
+        result.create[key] = (...args) => actionCreator(...args);
+        result.dispatch[key] = (...args) => {
+          const action = actionCreator(...args);
           this.store.dispatch(action);
           return action;
         };
-        result.listen[`${key}$`] = this.actions.pipe(ofType((creator as any).type));
+        result.listen[`${key}$`] = this.actions.pipe(ofType(actionCreator.type));
       }
     }
 
@@ -35,10 +49,13 @@ export class Connect {
     } : never;
   }
 
-  selectors<T extends { [key: string]: ReturnType<typeof createSelector<any, any, any>> }>(selectors: T) {
-    const result: any = {};
+  selectors<T extends Record<string, (...args: never[]) => unknown>>(selectors: T) {
+    const result: Record<string, Observable<unknown>> = {};
     for (const [key, selector] of Object.entries(selectors)) {
-      result[`${key}$`] = this.store.select(selector);
+      // `selector` is widened by `Object.entries`; narrow to the ngrx `Selector`
+      // shape `store.select` expects. Precise result types are restored for
+      // callers by `SelectorStreams<T>`.
+      result[`${key}$`] = this.store.select(selector as Selector<object, unknown>);
     }
     return result as unknown as SelectorStreams<T>;
   }

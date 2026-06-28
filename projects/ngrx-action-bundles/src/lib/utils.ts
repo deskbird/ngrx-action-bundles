@@ -24,5 +24,5 @@ export function createJavaScriptFunctionName<T extends string>(functionName: T):
         index === 0 ? `${item[0].toLocaleLowerCase()}${item.slice(1)}` : `${item[0].toUpperCase()}${item.slice(1)}`
     )
 
-  return result as any;
+  return result as unknown as FunctionNameFromString<T>;
 }

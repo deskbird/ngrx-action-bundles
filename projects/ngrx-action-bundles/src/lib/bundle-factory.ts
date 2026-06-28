@@ -1,4 +1,4 @@
-import { ActionCreatorProps, createAction } from '@ngrx/store';
+import { ActionCreatorProps, createAction, NotAllowedCheck } from '@ngrx/store';
 import { createTimestamp } from './utils';
 import { actionType } from './action-type';
 import { createActionWithTimestamp, ElementOf, Range } from './types';
@@ -12,7 +12,7 @@ function single<
   P extends object = EMPTY
 >(namespace: Namespace, actionName: ActionName, _props?: ActionCreatorProps<P>) {
   const name = actionType(`[${namespace}] ${actionName}`);
-  const actionFactory = createAction(name, _props as any);
+  const actionFactory = createAction(name, _props as ActionCreatorProps<P> & NotAllowedCheck<P>);
   return actionFactory as unknown as P extends EMPTY ?
     ReturnType<typeof createAction<`[${Namespace}] ${ActionName}`>> :
     ReturnType<typeof createAction<`[${Namespace}] ${ActionName}`, P>>;
@@ -24,11 +24,11 @@ function singleWithTimestamp<
   P extends object = EMPTY
 >(namespace: Namespace, actionName: ActionName, _props?: ActionCreatorProps<P>) {
   const name = actionType(`[${namespace}] ${actionName}`);
-  const actionFactory = createAction(name, _props as any);
-  const actionFactoryWrapper = (...args: any[]) => {
-    return Object.assign((actionFactory as any)(...args), { timestamp: createTimestamp() });
+  const actionFactory = createAction(name, _props as ActionCreatorProps<P> & NotAllowedCheck<P>);
+  const actionFactoryWrapper = (...args: Parameters<typeof actionFactory>) => {
+    return Object.assign(actionFactory(...args), { timestamp: createTimestamp() });
   }
-  (actionFactoryWrapper as any).type = actionFactory.type;
+  (actionFactoryWrapper as typeof actionFactoryWrapper & { type: string }).type = actionFactory.type;
 
   return actionFactoryWrapper as unknown as P extends EMPTY ?
     ReturnType<typeof createActionWithTimestamp<`[${Namespace}] ${ActionName}`>> :
@@ -49,10 +49,16 @@ export function forNamespace<Namespace extends string>(namespace: Namespace) {
       ReturnType<typeof singleWithTimestamp<Namespace, ActionName, P>>
     > => {
     const name = actionName;
+    type ReturnT = Record<
+      ActionName,
+      T extends false ?
+      ReturnType<typeof single<Namespace, ActionName, P>> :
+      ReturnType<typeof singleWithTimestamp<Namespace, ActionName, P>>
+    >;
     if (useWithTimestamp === true) {
-      return { [name]: singleWithTimestamp<Namespace, ActionName, P>(namespace, actionName, _props) } as any;
+      return { [name]: singleWithTimestamp<Namespace, ActionName, P>(namespace, actionName, _props) } as unknown as ReturnT;
     }
-    return { [name]: single<Namespace, ActionName, P>(namespace, actionName, _props) } as any;
+    return { [name]: single<Namespace, ActionName, P>(namespace, actionName, _props) } as unknown as ReturnT;
   };
 
 
